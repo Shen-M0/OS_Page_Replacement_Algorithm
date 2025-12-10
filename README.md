@@ -1,7 +1,7 @@
 # 🖥️ Advanced Page Replacement Algorithm Simulator
 
 這是一個基於 Python 與 Streamlit 開發的互動式作業系統頁面置換演算法模擬器。
-本專案旨在視覺化不同演算法在各種記憶體配置下的效能差異，深入分析 **Belady's Anomaly** 現象，並透過多種參照字串生成模式來驗證演算法對「局部性 (Locality)」的適應能力。
+本專案旨在視覺化不同演算法在各種記憶體配置下的效能差異，分析 **Belady's Anomaly** 現象，並透過多種參照字串生成模式來驗證演算法對「局部性 (Locality)」的適應能力。
 
 ## 🔗 線上演示 (Live Demo)
 
