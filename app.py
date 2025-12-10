@@ -11,14 +11,17 @@ import math
 # ==========================================
 st.set_page_config(page_title="Page Replacement Sim", layout="wide")
 
+# 定義線條風格
 STYLE_CONFIG = {
-    'FIFO': {'color': 'blue',  'marker': 'o', 'style': '-'},
-    'LFU':  {'color': 'green', 'marker': 's', 'style': '-'},
-    'MFU':  {'color': 'red',   'marker': '^', 'style': '-'}
+    'FIFO': {'color': 'blue',   'marker': 'o', 'style': '-'},
+    'LFU':  {'color': 'green',  'marker': 's', 'style': '-'},
+    'MFU':  {'color': 'red',    'marker': '^', 'style': '-'},
+    'LRU':  {'color': 'orange', 'marker': 'D', 'style': '-'},
+    'OPT':  {'color': 'purple', 'marker': '*', 'style': '--'} 
 }
 
 # ==========================================
-# 1. 核心演算法 (保持不變)
+# 1. 核心演算法
 # ==========================================
 def run_fifo(ref_string, frame_size):
     memory = deque()
@@ -75,11 +78,70 @@ def run_mfu(ref_string, frame_size):
                 memory.append(page)
     return page_faults
 
+def run_lru(ref_string, frame_size):
+    memory = []
+    page_faults = 0
+    for page in ref_string:
+        if page in memory:
+            memory.remove(page)
+            memory.append(page)
+        else:
+            page_faults += 1
+            if len(memory) < frame_size:
+                memory.append(page)
+            else:
+                memory.pop(0) 
+                memory.append(page)
+    return page_faults
+
+def run_opt(ref_string, frame_size):
+    memory = []
+    page_faults = 0
+    for i, page in enumerate(ref_string):
+        if page in memory:
+            continue
+        page_faults += 1
+        if len(memory) < frame_size:
+            memory.append(page)
+        else:
+            furthest_idx = -1
+            victim = -1
+            for mem_page in memory:
+                try:
+                    next_use = ref_string[i+1:].index(mem_page)
+                except ValueError:
+                    next_use = float('inf')
+                if next_use > furthest_idx:
+                    furthest_idx = next_use
+                    victim = mem_page
+            memory.remove(victim)
+            memory.append(page)
+    return page_faults
+
 # ==========================================
 # 2. 輔助函數
 # ==========================================
-def generate_reference_string(length, num_pages):
-    return [random.randint(0, num_pages - 1) for _ in range(length)]
+def generate_reference_string(length, num_pages, method="Uniform"):
+    ref_string = []
+    if method == "Uniform":
+        ref_string = [random.randint(0, num_pages - 1) for _ in range(length)]
+    elif method == "80/20 Rule":
+        cutoff = max(1, int(num_pages * 0.2))
+        hot_pages = list(range(0, cutoff))
+        cold_pages = list(range(cutoff, num_pages))
+        for _ in range(length):
+            if random.random() < 0.8:
+                ref_string.append(random.choice(hot_pages))
+            else:
+                ref_string.append(random.choice(cold_pages))
+    elif method == "Gaussian":
+        mean = (num_pages - 1) / 2
+        sigma = num_pages / 6 
+        for _ in range(length):
+            val = int(random.gauss(mean, sigma))
+            val = max(0, min(num_pages - 1, val))
+            ref_string.append(val)
+    return ref_string
 
 def check_belady_anomaly(algo_func, ref_string, max_frames):
     prev_faults = float('inf')
@@ -89,7 +151,6 @@ def check_belady_anomaly(algo_func, ref_string, max_frames):
     for f in range(1, max_frames + 1):
         faults = algo_func(ref_string, f)
         faults_data.append(faults)
-        
         if f > 1 and faults > prev_faults:
             msg = f"At {f-1}->{f} Frames (Faults: {prev_faults}->{faults})"
             anomalies.append(msg)
@@ -97,26 +158,29 @@ def check_belady_anomaly(algo_func, ref_string, max_frames):
         
     return len(anomalies) > 0, anomalies, faults_data
 
-# 用於 Streamlit 的繪圖函數 (回傳 figure 物件)
 def create_plot(frame_axis, data_dict, title, anomaly_info=None):
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(8, 4))
     
-    for algo_name, y_values in data_dict.items():
-        style = STYLE_CONFIG[algo_name]
+    ordered_algos = [k for k in data_dict.keys() if k != 'OPT']
+    if 'OPT' in data_dict:
+        ordered_algos.append('OPT')
+
+    for algo_name in ordered_algos:
+        y_values = data_dict[algo_name]
+        style = STYLE_CONFIG.get(algo_name, {'color': 'black', 'marker': 'x', 'style': ':'})
+        lw = 2 if algo_name == 'OPT' else 1.5
         ax.plot(frame_axis, y_values, label=algo_name, 
-                 color=style['color'], marker=style['marker'], linestyle=style['style'])
+                 color=style['color'], marker=style['marker'], linestyle=style['style'], linewidth=lw)
 
     if anomaly_info:
         for algo, details in anomaly_info.items():
             if algo in data_dict and details:
                 try:
                     first_detail = details[0]
-                    # 解析字串 "At 3->4 Frames..."
                     frame_change = int(first_detail.split('->')[0].split()[-1])
                     faults_change = int(first_detail.split('Faults: ')[1].split('->')[1].replace(')', ''))
-                    
                     ax.annotate(f'{algo} Anomaly!', xy=(frame_change, faults_change), 
-                                 xytext=(0, 15), textcoords='offset points', ha='center', 
+                                 xytext=(0, 25), textcoords='offset points', ha='center', 
                                  color=STYLE_CONFIG[algo]['color'], 
                                  arrowprops=dict(facecolor='black', arrowstyle='->'),
                                  fontsize=9, fontweight='bold')
@@ -128,112 +192,124 @@ def create_plot(frame_axis, data_dict, title, anomaly_info=None):
     ax.set_xticks(frame_axis)
     ax.grid(True, linestyle='--', alpha=0.6)
     ax.legend()
+    plt.tight_layout()
     return fig
 
 # ==========================================
 # 3. Streamlit 前端介面邏輯
 # ==========================================
 def main():
-    st.title("🖥️ Page Replacement & Belady's Anomaly Simulator")
-    st.markdown("比較 FIFO, LFU, MFU 演算法並驗證異常現象")
+    st.title("🖥️ Advanced Page Replacement Simulator")
+    st.markdown("比較 **FIFO, LFU, MFU, LRU, OPT** 演算法效能與 Belady 異常")
 
-    # --- 側邊欄：參數設定 ---
     st.sidebar.header("⚙️ 模擬參數設定")
-    
-    # 修改 app.py 中的這幾行
-    NUM_PAGES = st.sidebar.number_input("Page Types", min_value=5, max_value=100, value=60) # 改為 60
-    REF_LENGTH = st.sidebar.number_input("Ref String Length", min_value=10, max_value=5000, value=1000) # 改為 1000
-    NUM_ITERATIONS = st.sidebar.slider("Iterations", 1, 200, 100) # 改為 100
-    MAX_FRAMES = st.sidebar.slider("Max Frames", 3, 50, 30) # 改為 30
+    GEN_METHOD = st.sidebar.selectbox(
+        "Reference String Distribution", ("Uniform", "80/20 Rule", "Gaussian"),
+        help="Uniform: 隨機\n80/20: 局部性(LRU/LFU強)\nGaussian: 常態分佈"
+    )
+    NUM_PAGES = st.sidebar.number_input("Page Range", 5, 100, 60)
+    REF_LENGTH = st.sidebar.number_input("Ref String Length", 10, 5000, 1000)
+    NUM_ITERATIONS = st.sidebar.slider("Iterations", 1, 200, 50)
+    MAX_FRAMES = st.sidebar.slider("Max Frames", 3, 50, 30)
     
     run_btn = st.sidebar.button("🚀 開始模擬", type="primary")
 
-    # --- 主程式區塊 ---
     if run_btn:
-        with st.spinner(f'正在執行 {NUM_ITERATIONS} 組模擬...'):
-            
-            # 初始化數據容器
-            ALGO_FUNCTIONS = {'FIFO': run_fifo, 'LFU': run_lfu, 'MFU': run_mfu}
+        st.info(f"模式：{GEN_METHOD} | 正在執行包含 OPT 的深度模擬...")
+        
+        ALGO_FUNCTIONS = {
+            'FIFO': run_fifo, 
+            'LFU':  run_lfu, 
+            'MFU':  run_mfu,
+            'LRU':  run_lru,
+            'OPT':  run_opt
+        }
+        
+        with st.spinner('計算中 (OPT 需要預知未來，可能稍慢)...'):
             percentages = [25, 50, 75, 100]
             frame_thresholds = {p: max(1, math.ceil(MAX_FRAMES * (p / 100))) for p in percentages}
             
             all_results = {name: defaultdict(list) for name in ALGO_FUNCTIONS}
             anomaly_report = {name: [] for name in ALGO_FUNCTIONS}
-            
+            all_runs_history = [] 
+
             stats = {
                 'interval_wins': {p: {name: 0 for name in ALGO_FUNCTIONS} for p in percentages},
                 'interval_fault_sums': {p: {name: 0 for name in ALGO_FUNCTIONS} for p in percentages}
             }
             
             frames_axis = list(range(1, MAX_FRAMES + 1))
-            
-            # 隨機挑選一組有異常的來展示 (為了 Demo 效果)
             example_anomaly_run = None
             
-            # --- 模擬迴圈 ---
             progress_bar = st.progress(0)
+            
             for i in range(1, NUM_ITERATIONS + 1):
-                ref_str = generate_reference_string(REF_LENGTH, NUM_PAGES)
+                ref_str = generate_reference_string(REF_LENGTH, NUM_PAGES, GEN_METHOD)
                 current_run_data = {}
                 current_anomalies = {}
                 
                 for name, func in ALGO_FUNCTIONS.items():
                     is_anomaly, details, faults = check_belady_anomaly(func, ref_str, MAX_FRAMES)
                     current_run_data[name] = faults
-                    
-                    # 數據累積
                     for f_idx, val in enumerate(faults):
                         all_results[name][frames_axis[f_idx]].append(val)
                         
                     if is_anomaly:
-                        anomaly_report[name].append({'Run': i, 'Details': details})
+                        anomaly_report[name].append({
+                            'Run': i, 'Details': details,
+                            'FullData': current_run_data, 'AllAnomalies': current_anomalies
+                        })
                         current_anomalies[name] = details
                 
-                # 若這組有異常，且還沒存過範例，就存下來畫圖用
-                if current_anomalies and example_anomaly_run is None:
+                all_runs_history.append({'id': i, 'data': current_run_data, 'anomalies': current_anomalies})
+                if current_anomalies.get('FIFO') and example_anomaly_run is None:
                     example_anomaly_run = (i, current_run_data, current_anomalies)
 
-                # 區間統計
                 for p in percentages:
                     limit = frame_thresholds[p]
                     interval_sums = {name: sum(current_run_data[name][:limit]) for name in ALGO_FUNCTIONS}
-                    winner = min(interval_sums, key=interval_sums.get)
-                    stats['interval_wins'][p][winner] += 1
+                    
+                    # 統計累加所有錯誤數 (包含 OPT)
                     for name in ALGO_FUNCTIONS:
                         stats['interval_fault_sums'][p][name] += interval_sums[name]
+                    
+                    # 計算勝者時，排除 OPT (只在實務演算法中比)
+                    practical_sums = {k: v for k, v in interval_sums.items() if k != 'OPT'}
+                    winner = min(practical_sums, key=practical_sums.get)
+                    stats['interval_wins'][p][winner] += 1
                 
                 progress_bar.progress(i / NUM_ITERATIONS)
             
-            # --- 模擬結束，整理數據 ---
             avg_data = {name: [np.mean(all_results[name][f]) for f in frames_axis] for name in ALGO_FUNCTIONS}
 
-            # --- 顯示結果 (使用 Tabs 分頁) ---
-            tab1, tab2, tab3 = st.tabs(["📊 綜合分析矩陣", "📈 趨勢與異常圖表", "📝 詳細異常報告"])
+            # --- 顯示結果 (順序調整) ---
+            tab1, tab2, tab3, tab4 = st.tabs(["📊 矩陣與分析", "📈 平均趨勢", "📝 異常日誌", "🗂️ 歷程回放"])
             
-            # Tab 1: 矩陣表格
             with tab1:
-                st.subheader("1. 區間勝率矩陣 (Interval Win Rates)")
-                st.caption(f"定義：在特定 Frames 限制下 (Frame <= X)，該演算法錯誤最少的機率。 Frame Cuts: {frame_thresholds}")
+                # 1. 區間勝率矩陣 (排除 OPT)
+                st.subheader("1. 區間勝率矩陣 ")
+                st.caption(f"區間內作為最佳演算法的比率，排除 OPT 演算法")
                 
-                # 製作 DataFrame
                 win_data = []
                 for name in ALGO_FUNCTIONS:
+                    if name == 'OPT': continue # 列表不顯示 OPT
+                    
                     row = {'Algorithm': name}
                     for p in percentages:
                         rate = (stats['interval_wins'][p][name] / NUM_ITERATIONS) * 100
-                        # 標記 Best
-                        all_wins = [stats['interval_wins'][p][algo] for algo in ALGO_FUNCTIONS]
+                        # 找出該欄位(排除OPT後)的最大值
+                        all_wins = [stats['interval_wins'][p][algo] for algo in ALGO_FUNCTIONS if algo != 'OPT']
                         label = f"{rate:.1f}%"
-                        if stats['interval_wins'][p][name] == max(all_wins):
-                            label += " (Best)"
+                        if stats['interval_wins'][p][name] == max(all_wins): label += " (Best)"
                         row[f"Top {p}% (F<={frame_thresholds[p]})"] = label
                     win_data.append(row)
                 st.dataframe(pd.DataFrame(win_data).set_index('Algorithm'), use_container_width=True)
 
                 st.divider()
 
-                st.subheader("2. 區間平均錯誤矩陣 (Avg Faults per Interval)")
-                st.caption("定義：在該區間內，平均花費多少個 Page Faults 完成任務 (越低越好)。")
+                # 2. 區間平均錯誤矩陣 (顯示 OPT，但比較時忽略它)
+                st.subheader("2. 區間平均錯誤矩陣")
+                st.caption("平均發生多少次 Page Faults ，OPT不列入比較")
                 
                 avg_fault_data = []
                 for name in ALGO_FUNCTIONS:
@@ -242,54 +318,97 @@ def main():
                         frame_count = frame_thresholds[p]
                         val = stats['interval_fault_sums'][p][name] / (NUM_ITERATIONS * frame_count)
                         
-                        # 標記 Best
-                        all_vals = [stats['interval_fault_sums'][p][algo] / (NUM_ITERATIONS * frame_count) for algo in ALGO_FUNCTIONS]
+                        # 找出實務演算法中的最小值 (用於標記 Best)
+                        practical_vals = [
+                            stats['interval_fault_sums'][p][algo] / (NUM_ITERATIONS * frame_count) 
+                            for algo in ALGO_FUNCTIONS if algo != 'OPT'
+                        ]
+                        min_practical_val = min(practical_vals)
+                        
                         label = f"{val:.2f}"
-                        if val == min(all_vals):
+                        # 如果不是 OPT，且數值等於實務中的最小值，則標記 Best
+                        if name != 'OPT' and val == min_practical_val:
                             label += " (Best)"
+                        
                         row[f"Top {p}% (F<={frame_thresholds[p]})"] = label
                     avg_fault_data.append(row)
                 st.dataframe(pd.DataFrame(avg_fault_data).set_index('Algorithm'), use_container_width=True)
 
-            # Tab 2: 圖表
-            with tab2:
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.subheader("平均效能曲線 (Average Curve)")
-                    st.caption(f"基於 {NUM_ITERATIONS} 次測試的平均結果")
-                    fig_avg = create_plot(frames_axis, avg_data, "Average Page Faults vs Frames")
-                    st.pyplot(fig_avg)
-                
-                with col2:
-                    st.subheader("單次模擬 (異常捕捉範例)")
-                    if example_anomaly_run:
-                        run_id, run_data, run_anomalies = example_anomaly_run
-                        st.caption(f"Run {run_id}: 偵測到 Belady's Anomaly (詳見箭頭)")
-                        fig_single = create_plot(frames_axis, run_data, f"Run {run_id} Performance", run_anomalies)
-                        st.pyplot(fig_single)
-                    else:
-                        st.info("本次隨機模擬未捕捉到 Belady 異常範例，請嘗試增加 Iterations 或 Pages。")
+                st.divider()
 
-            # Tab 3: 詳細報告
+                # 3. 與 OPT 的差距比較
+                st.subheader("3. 與 OPT 的差距比較")
+                st.caption("演算法Page Faults / OPT Page Faults")
+                
+                ratio_data = []
+                for name in ALGO_FUNCTIONS:
+                    if name == 'OPT': continue
+                    
+                    row = {'Algorithm': name}
+                    total_algo_faults = stats['interval_fault_sums'][100][name]
+                    total_opt_faults = stats['interval_fault_sums'][100]['OPT']
+                    
+                    if total_opt_faults == 0: total_opt_faults = 1
+                    
+                    ratio = total_algo_faults / total_opt_faults
+                    diff_pct = (ratio - 1) * 100
+                    
+                    row['Competitive Ratio'] = f"{ratio:.3f}"
+                    row['Diff from OPT'] = f"+{diff_pct:.1f}%"
+                    
+                    if ratio < 1.1: grade = "🌟 Excellent"
+                    elif ratio < 1.3: grade = "✅ Good"
+                    elif ratio < 1.6: grade = "⚠️ Fair"
+                    else: grade = "❌ Poor"
+                    row['Grade'] = grade
+                    
+                    ratio_data.append(row)
+                st.dataframe(pd.DataFrame(ratio_data).set_index('Algorithm'), use_container_width=True)
+
+            with tab2:
+                st.subheader(f"平均效能曲線 - {GEN_METHOD}")
+                st.caption(f"虛線(Purple) 為 OPT 理論最佳值，其他演算法應盡量貼近此線。")
+                fig_avg = create_plot(frames_axis, avg_data, "Average Page Faults vs Frames")
+                st.pyplot(fig_avg)
+
             with tab3:
-                st.subheader("Belady's Anomaly 偵測統計")
-                cols = st.columns(3)
+                st.subheader("Belady's Anomaly 詳細報告")
+                st.markdown("> **知識點**：理論上 LRU 與 OPT 是 Stack Algorithms，**不應** 發生 Belady 異常。")
+                cols = st.columns(len(ALGO_FUNCTIONS))
                 for idx, algo in enumerate(ALGO_FUNCTIONS):
                     count = len(anomaly_report[algo])
                     rate = (count / NUM_ITERATIONS) * 100
                     with cols[idx]:
-                        st.metric(label=f"{algo} Anomaly Rate", value=f"{rate:.1f}%", delta=f"{count} 次")
+                        st.metric(label=algo, value=f"{count}次", delta=f"{rate:.1f}%")
                 
                 st.divider()
-                st.markdown("#### 詳細異常日誌")
                 for algo, logs in anomaly_report.items():
                     if logs:
-                        with st.expander(f"查看 {algo} 的 {len(logs)} 筆異常紀錄"):
+                        with st.expander(f"⚠️ 查看 {algo} 的異常紀錄 ({len(logs)} 筆)"):
                             for item in logs:
-                                st.text(f"Run {item['Run']}: {item['Details'][0]}")
-                    else:
-                        st.text(f"{algo}: 無異常偵測紀錄 (Stable)")
+                                run_id = item['Run']
+                                st.text(f"Run {run_id}: {item['Details'][0]}")
+                                fig_anomaly = create_plot(frames_axis, item['FullData'], f"Run {run_id} Snapshot", item['AllAnomalies'])
+                                st.pyplot(fig_anomaly)
+
+            with tab4:
+                st.subheader("🗂️ 模擬歷程回放")
+                selected_run_id = st.slider("選擇 Run ID", 1, NUM_ITERATIONS, 1)
+                run_record = all_runs_history[selected_run_id - 1]
+                
+                run_opt_faults = sum(run_record['data']['OPT'])
+                st.markdown("#### 該次模擬的 OPT 差距比較：")
+                cols = st.columns(len(ALGO_FUNCTIONS)-1)
+                idx = 0
+                for algo in ALGO_FUNCTIONS:
+                    if algo == 'OPT': continue
+                    my_faults = sum(run_record['data'][algo])
+                    ratio = my_faults / run_opt_faults if run_opt_faults > 0 else 1
+                    cols[idx].metric(algo, f"{my_faults}", f"x{ratio:.2f} of OPT", delta_color="inverse")
+                    idx+=1
+
+                fig_replay = create_plot(frames_axis, run_record['data'], f"Run {selected_run_id} Performance Replay", run_record['anomalies'])
+                st.pyplot(fig_replay)
 
 if __name__ == "__main__":
     main()
