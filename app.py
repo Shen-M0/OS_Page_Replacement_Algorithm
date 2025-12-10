@@ -230,10 +230,10 @@ def main():
         "Reference String Distribution", 
         ("Uniform", "80/20 Rule", "Gaussian", "Cyclic (MFU Friendly)"),
         help="""
-        Uniform: 完全隨機分佈，所有頁面被選中的機率均等。
-        80/20 Rule: 模擬高度局部性，20% 的頁面佔據 80% 的存取量。
-        Gaussian: 常態分佈，存取集中在中間區段的頁面。
-        Cyclic: 模擬階段性工作切換，舊頁面頻率高但不再使用。
+        Uniform: 完全隨機分佈，所有頁面被選中的機率均等。\n
+        80/20 Rule: 模擬高度局部性，20% 的頁面佔據 80% 的存取量。\n
+        Gaussian: 常態分佈，存取集中在中間區段的頁面。\n
+        Cyclic: 模擬階段性工作切換，舊頁面頻率高但不再使用。\n
         """
     )
     
