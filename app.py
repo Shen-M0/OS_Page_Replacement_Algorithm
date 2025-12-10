@@ -228,7 +228,7 @@ def main():
     # [修改] 更新了 help 說明文字
     GEN_METHOD = st.sidebar.selectbox(
         "Reference String Distribution (參照字串生成模式)", 
-        ("Uniform", "80/20 Rule", "Gaussian", "Cyclic (MFU Friendly)"),
+        ("Uniform", "80/20 Rule", "Gaussian", "Cyclic"),
         help="""
         Uniform: 完全隨機分佈，所有頁面被選中的機率均等。\n
         80/20 Rule: 模擬高度局部性，20% 的頁面佔據 80% 的存取量。\n
@@ -453,3 +453,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
