@@ -227,7 +227,7 @@ def main():
     
     # [修改] 更新了 help 說明文字
     GEN_METHOD = st.sidebar.selectbox(
-        "Reference String Distribution", 
+        "Reference String Distribution (參照字串生成模式)", 
         ("Uniform", "80/20 Rule", "Gaussian", "Cyclic (MFU Friendly)"),
         help="""
         Uniform: 完全隨機分佈，所有頁面被選中的機率均等。\n
@@ -237,10 +237,10 @@ def main():
         """
     )
     
-    NUM_PAGES = st.sidebar.number_input("Page Range", 5, 100, 60)
-    REF_LENGTH = st.sidebar.number_input("Ref String Length", 10, 5000, 1000)
-    NUM_ITERATIONS = st.sidebar.slider("Iterations", 1, 200, 50)
-    MAX_FRAMES = st.sidebar.slider("Max Frames", 3, 50, 30)
+    NUM_PAGES = st.sidebar.number_input("Page Range (頁面種類範圍)", 5, 100, 60)
+    REF_LENGTH = st.sidebar.number_input("Ref String Length (參照字串長度)", 10, 5000, 1000)
+    NUM_ITERATIONS = st.sidebar.slider("Iterations (測試次數)", 1, 200, 50)
+    MAX_FRAMES = st.sidebar.slider("Max Frames (頁框數)", 3, 50, 30)
     
     run_btn = st.sidebar.button("🚀 開始模擬", type="primary")
 
