@@ -220,10 +220,10 @@ def create_plot(frame_axis, data_dict, title, anomaly_info=None):
 # 3. Streamlit 前端介面邏輯
 # ==========================================
 def main():
-    st.title("🖥️ Advanced Page Replacement Simulator")
+    st.title("Page and Frame Replacement Algorithms Simulator")
     st.markdown("比較 **FIFO, LFU, MFU, LRU, OPT** 演算法效能與 Belady 異常")
 
-    st.sidebar.header("⚙️ 模擬參數設定")
+    st.sidebar.header("模擬參數設定")
     
     GEN_METHOD = st.sidebar.selectbox(
         "Reference String Distribution (參照字串生成模式)", 
@@ -241,7 +241,7 @@ def main():
     NUM_ITERATIONS = st.sidebar.slider("Iterations (測試次數)", 1, 200, 50)
     MAX_FRAMES = st.sidebar.slider("Max Frames (頁框數)", 3, 50, 30)
     
-    run_btn = st.sidebar.button("🚀 開始模擬", type="primary")
+    run_btn = st.sidebar.button("開始模擬", type="primary")
 
     if 'simulation_results' not in st.session_state:
         st.session_state.simulation_results = None
@@ -339,7 +339,7 @@ def main():
         NUM_ITERATIONS = res['NUM_ITERATIONS']
 
         # --- 顯示結果 ---
-        tab1, tab2, tab3, tab4 = st.tabs(["📊 矩陣與分析", "📈 平均趨勢", "📝 異常日誌", "🗂️ 歷程回放與驗證"])
+        tab1, tab2, tab3, tab4 = st.tabs(["矩陣與分析", "平均趨勢", "異常日誌", "歷程回放與驗證"])
         
         with tab1:
             st.subheader("1. 區間勝率矩陣 (排除 OPT)")
@@ -428,7 +428,7 @@ def main():
             st.divider()
             for algo, logs in anomaly_report.items():
                 if logs:
-                    with st.expander(f"⚠️ 查看 {algo} 的異常紀錄 ({len(logs)} 筆)"):
+                    with st.expander(f"查看 {algo} 的異常紀錄 ({len(logs)} 筆)"):
                         for item in logs:
                             run_id = item['Run']
                             st.text(f"Run {run_id}: {item['Details'][0]}")
@@ -436,14 +436,14 @@ def main():
                             st.pyplot(fig_anomaly)
 
         with tab4:
-            st.subheader("🗂️ 模擬歷程回放與驗證")
+            st.subheader("模擬歷程回放與驗證")
             
             selected_run_id = st.slider("選擇 Run ID", 1, NUM_ITERATIONS, 1)
             
             run_record = all_runs_history[selected_run_id - 1]
             
             # [新增] 顯示 Reference String
-            with st.expander(f"📜 查看 Run {selected_run_id} 的參照字串 (Reference String)"):
+            with st.expander(f"查看 Run {selected_run_id} 的參照字串 (Reference String)"):
                 st.text_area("Reference String Content", str(run_record['ref_str']), height=100)
             
             run_opt_faults = sum(run_record['data']['OPT'])
@@ -464,10 +464,10 @@ def main():
             st.divider()
             
             # [新增] 驗證按鈕與邏輯
-            st.subheader("🧪 可驗證性檢查 (Reproducibility Check)")
-            st.markdown("點擊下方按鈕，系統將使用上方儲存的 Reference String 重新執行所有演算法，您可以比對新生成的圖表是否與原始結果完全一致。")
+            st.subheader("重新模擬")
+            st.markdown("使用上方儲存的 Reference String 重新執行所有演算法")
             
-            if st.button(f"🔄 重新執行 Run {selected_run_id} 進行驗證"):
+            if st.button(f"重新模擬 Run {selected_run_id} "):
                 with st.spinner("正在重新計算..."):
                     # 獲取該次 Run 的 ref_str
                     verify_ref_str = run_record['ref_str']
@@ -481,11 +481,11 @@ def main():
                         _, _, faults = check_belady_anomaly(func, verify_ref_str, verify_max_frames)
                         verify_data[name] = faults
                     
-                    st.success("驗證計算完成！")
-                    st.write("##### 重新驗證結果：")
+                    st.success("重新計算完成！")
+                    st.write("##### 重新模擬結果：")
                     fig_verify = create_plot(frames_axis, verify_data, f"Run {selected_run_id} Verification (Re-run)")
                     st.pyplot(fig_verify)
-                    st.info("✅ 請比對上方兩張圖表。若線條走向與數值完全重疊，即證明演算法與模擬器具備可重複驗證性。")
 
 if __name__ == "__main__":
     main()
+
