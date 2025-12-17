@@ -225,7 +225,6 @@ def main():
 
     st.sidebar.header("⚙️ 模擬參數設定")
     
-    # [修改] 更新了 help 說明文字
     GEN_METHOD = st.sidebar.selectbox(
         "Reference String Distribution (參照字串生成模式)", 
         ("Uniform", "80/20 Rule", "Gaussian", "Cyclic"),
@@ -291,7 +290,13 @@ def main():
                         })
                         current_anomalies[name] = details
                 
-                all_runs_history.append({'id': i, 'data': current_run_data, 'anomalies': current_anomalies})
+                # [新增] 儲存 ref_str 以便後續驗證
+                all_runs_history.append({
+                    'id': i, 
+                    'data': current_run_data, 
+                    'anomalies': current_anomalies,
+                    'ref_str': ref_str 
+                })
 
                 for p in percentages:
                     limit = frame_thresholds[p]
@@ -334,11 +339,11 @@ def main():
         NUM_ITERATIONS = res['NUM_ITERATIONS']
 
         # --- 顯示結果 ---
-        tab1, tab2, tab3, tab4 = st.tabs(["📊 矩陣與分析", "📈 平均趨勢", "📝 異常日誌", "🗂️ 歷程回放"])
+        tab1, tab2, tab3, tab4 = st.tabs(["📊 矩陣與分析", "📈 平均趨勢", "📝 異常日誌", "🗂️ 歷程回放與驗證"])
         
         with tab1:
-            st.subheader("1. 區間勝率矩陣")
-            st.caption(f"區間內作為最佳演算法的比率，排除 OPT 演算法")
+            st.subheader("1. 區間勝率矩陣 (排除 OPT)")
+            st.caption(f"定義：在實務演算法 (FIFO, LFU, MFU, LRU) 中，誰是表現最好的？")
             
             win_data = []
             for name in ALGO_FUNCTIONS:
@@ -357,7 +362,7 @@ def main():
             st.divider()
 
             st.subheader("2. 區間平均錯誤矩陣")
-            st.caption("平均發生多少次 Page Faults ，OPT不列入比較")
+            st.caption("定義：平均發生多少次 Page Faults (越低越好)。(Best) 標記僅比較實務演算法。")
             
             avg_fault_data = []
             for name in ALGO_FUNCTIONS:
@@ -382,8 +387,8 @@ def main():
 
             st.divider()
 
-            st.subheader("3. 與 OPT 的差距比較")
-            st.caption("演算法Page Faults / OPT Page Faults")
+            st.subheader("3. 與 OPT (最佳解) 的差距比較")
+            st.caption("競爭比 (Ratio) = 該演算法錯誤數 / OPT錯誤數。")
             
             ratio_data = []
             for name in ALGO_FUNCTIONS:
@@ -407,7 +412,7 @@ def main():
 
         with tab2:
             st.subheader(f"平均效能曲線 - {GEN_METHOD}")
-            st.caption(f"OPT 理論最佳值，其他演算法應盡量貼近此線。")
+            st.caption(f"虛線(Purple) 為 OPT 理論最佳值，其他演算法應盡量貼近此線。")
             fig_avg = create_plot(frames_axis, avg_data, "Average Page Faults vs Frames")
             st.pyplot(fig_avg)
 
@@ -431,11 +436,15 @@ def main():
                             st.pyplot(fig_anomaly)
 
         with tab4:
-            st.subheader("🗂️ 模擬歷程回放")
+            st.subheader("🗂️ 模擬歷程回放與驗證")
             
             selected_run_id = st.slider("選擇 Run ID", 1, NUM_ITERATIONS, 1)
             
             run_record = all_runs_history[selected_run_id - 1]
+            
+            # [新增] 顯示 Reference String
+            with st.expander(f"📜 查看 Run {selected_run_id} 的參照字串 (Reference String)"):
+                st.text_area("Reference String Content", str(run_record['ref_str']), height=100)
             
             run_opt_faults = sum(run_record['data']['OPT'])
             st.markdown("#### 該次模擬的 OPT 差距比較：")
@@ -448,9 +457,35 @@ def main():
                 cols[idx].metric(algo, f"{my_faults}", f"x{ratio:.2f} of OPT", delta_color="inverse")
                 idx+=1
 
-            fig_replay = create_plot(frames_axis, run_record['data'], f"Run {selected_run_id} Performance Replay", run_record['anomalies'])
+            st.write("##### 原始模擬結果：")
+            fig_replay = create_plot(frames_axis, run_record['data'], f"Run {selected_run_id} Performance (Original)", run_record['anomalies'])
             st.pyplot(fig_replay)
+
+            st.divider()
+            
+            # [新增] 驗證按鈕與邏輯
+            st.subheader("🧪 可驗證性檢查 (Reproducibility Check)")
+            st.markdown("點擊下方按鈕，系統將使用上方儲存的 Reference String 重新執行所有演算法，您可以比對新生成的圖表是否與原始結果完全一致。")
+            
+            if st.button(f"🔄 重新執行 Run {selected_run_id} 進行驗證"):
+                with st.spinner("正在重新計算..."):
+                    # 獲取該次 Run 的 ref_str
+                    verify_ref_str = run_record['ref_str']
+                    verify_data = {}
+                    
+                    # 為了確保圖表一致，我們使用 frames_axis 的長度 (即 MAX_FRAMES)
+                    verify_max_frames = frames_axis[-1]
+                    
+                    for name, func in ALGO_FUNCTIONS.items():
+                        # 重新計算
+                        _, _, faults = check_belady_anomaly(func, verify_ref_str, verify_max_frames)
+                        verify_data[name] = faults
+                    
+                    st.success("驗證計算完成！")
+                    st.write("##### 重新驗證結果：")
+                    fig_verify = create_plot(frames_axis, verify_data, f"Run {selected_run_id} Verification (Re-run)")
+                    st.pyplot(fig_verify)
+                    st.info("✅ 請比對上方兩張圖表。若線條走向與數值完全重疊，即證明演算法與模擬器具備可重複驗證性。")
 
 if __name__ == "__main__":
     main()
-
