@@ -343,7 +343,7 @@ def main():
         
         with tab1:
             st.subheader("1. 區間勝率矩陣 (排除 OPT)")
-            st.caption(f"定義：在實務演算法 (FIFO, LFU, MFU, LRU) 中，誰是表現最好的？")
+            st.caption(f"定義：在實務演算法 (FIFO, LFU, MFU, LRU) 中，誰是表現最好的")
             
             win_data = []
             for name in ALGO_FUNCTIONS:
@@ -468,7 +468,7 @@ def main():
             st.markdown("使用上方儲存的 Reference String 重新執行所有演算法")
             
             if st.button(f"重新模擬 Run {selected_run_id} "):
-                with st.spinner("正在重新計算..."):
+                with st.spinner("正在重新模擬..."):
                     # 獲取該次 Run 的 ref_str
                     verify_ref_str = run_record['ref_str']
                     verify_data = {}
@@ -481,11 +481,12 @@ def main():
                         _, _, faults = check_belady_anomaly(func, verify_ref_str, verify_max_frames)
                         verify_data[name] = faults
                     
-                    st.success("重新計算完成！")
+                    st.success("重新模擬完成！")
                     st.write("##### 重新模擬結果：")
                     fig_verify = create_plot(frames_axis, verify_data, f"Run {selected_run_id} Verification (Re-run)")
                     st.pyplot(fig_verify)
 
 if __name__ == "__main__":
     main()
+
 
