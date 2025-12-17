@@ -143,8 +143,9 @@ def generate_reference_string(length, num_pages, method="Uniform"):
             val = int(random.gauss(mean, sigma))
             val = max(0, min(num_pages - 1, val))
             ref_string.append(val)
-            
-    elif method == "Cyclic (MFU Friendly)":
+    
+    # [修正] 這裡原本是 "Cyclic (MFU Friendly)"，導致與 selectbox 不符
+    elif method == "Cyclic":
         current_page = 0
         window_size = max(2, int(num_pages * 0.1)) 
         
@@ -161,6 +162,10 @@ def generate_reference_string(length, num_pages, method="Uniform"):
                 if len(ref_string) >= length: break
             
             current_page = (current_page + window_size) % num_pages
+
+    # [防呆] 如果上面都沒對應到，回傳隨機避免報錯
+    if not ref_string:
+        ref_string = [random.randint(0, num_pages - 1) for _ in range(length)]
 
     return ref_string
 
@@ -243,10 +248,16 @@ def main():
     
     run_btn = st.sidebar.button("開始模擬", type="primary")
 
+    # 初始化 Session State
     if 'simulation_results' not in st.session_state:
         st.session_state.simulation_results = None
+    if 'verification_result' not in st.session_state:
+        st.session_state.verification_result = None
 
+    # 如果按下開始按鈕
     if run_btn:
+        st.session_state.verification_result = None # 清空舊的驗證圖
+        
         st.info(f"目前的Reference String生成模式為：{GEN_METHOD}")
         
         ALGO_FUNCTIONS = {
@@ -290,7 +301,6 @@ def main():
                         })
                         current_anomalies[name] = details
                 
-                # [新增] 儲存 ref_str 以便後續驗證
                 all_runs_history.append({
                     'id': i, 
                     'data': current_run_data, 
@@ -311,6 +321,7 @@ def main():
             
             avg_data = {name: [np.mean(all_results[name][f]) for f in frames_axis] for name in ALGO_FUNCTIONS}
 
+            # 儲存結果
             st.session_state.simulation_results = {
                 'stats': stats,
                 'avg_data': avg_data,
@@ -324,9 +335,14 @@ def main():
                 'NUM_ITERATIONS': NUM_ITERATIONS
             }
 
+    # 顯示結果 (如果有數據)
     if st.session_state.simulation_results is not None:
         res = st.session_state.simulation_results
         
+        # 檢查參數一致性 (防止切換參數後未按開始就報錯)
+        if res['GEN_METHOD'] != GEN_METHOD:
+            st.warning("偵測到參數變更！請點擊「開始模擬」以更新結果。目前顯示為舊參數的數據。")
+
         stats = res['stats']
         avg_data = res['avg_data']
         anomaly_report = res['anomaly_report']
@@ -335,7 +351,6 @@ def main():
         frame_thresholds = res['frame_thresholds']
         percentages = res['percentages']
         ALGO_FUNCTIONS = res['ALGO_FUNCTIONS']
-        GEN_METHOD = res['GEN_METHOD']
         NUM_ITERATIONS = res['NUM_ITERATIONS']
 
         # --- 顯示結果 ---
@@ -411,7 +426,7 @@ def main():
             st.dataframe(pd.DataFrame(ratio_data).set_index('Algorithm'), use_container_width=True)
 
         with tab2:
-            st.subheader(f"平均效能曲線 - {GEN_METHOD}")
+            st.subheader(f"平均效能曲線")
             st.caption(f"虛線(Purple) 為 OPT 理論最佳值，其他演算法應盡量貼近此線。")
             fig_avg = create_plot(frames_axis, avg_data, "Average Page Faults vs Frames")
             st.pyplot(fig_avg)
@@ -438,11 +453,15 @@ def main():
         with tab4:
             st.subheader("模擬歷程回放與驗證")
             
-            selected_run_id = st.slider("選擇 Run ID", 1, NUM_ITERATIONS, 1)
+            # 使用 key 來確保滑桿狀態正確
+            selected_run_id = st.slider("選擇 Run ID", 1, NUM_ITERATIONS, 1, key="history_slider")
             
+            # 確保索引不越界 (防止參數變更後舊的索引過大)
+            if selected_run_id > len(all_runs_history):
+                selected_run_id = 1
+                
             run_record = all_runs_history[selected_run_id - 1]
             
-            # [新增] 顯示 Reference String
             with st.expander(f"查看 Run {selected_run_id} 的參照字串 (Reference String)"):
                 st.text_area("Reference String Content", str(run_record['ref_str']), height=100)
             
@@ -463,30 +482,37 @@ def main():
 
             st.divider()
             
-            # [新增] 驗證按鈕與邏輯
             st.subheader("重新模擬")
-            st.markdown("使用上方儲存的 Reference String 重新執行所有演算法")
             
+            # 驗證按鈕
             if st.button(f"重新模擬 Run {selected_run_id} "):
                 with st.spinner("正在重新模擬..."):
-                    # 獲取該次 Run 的 ref_str
                     verify_ref_str = run_record['ref_str']
                     verify_data = {}
-                    
-                    # 為了確保圖表一致，我們使用 frames_axis 的長度 (即 MAX_FRAMES)
                     verify_max_frames = frames_axis[-1]
                     
                     for name, func in ALGO_FUNCTIONS.items():
-                        # 重新計算
                         _, _, faults = check_belady_anomaly(func, verify_ref_str, verify_max_frames)
                         verify_data[name] = faults
                     
+                    # [優化] 將驗證結果存入 Session State，防止圖片消失
+                    st.session_state.verification_result = {
+                        'id': selected_run_id,
+                        'data': verify_data,
+                        'frames_axis': frames_axis
+                    }
+
+            # [優化] 如果有驗證結果，且 ID 符合，就顯示出來
+            if st.session_state.verification_result:
+                v_res = st.session_state.verification_result
+                if v_res['id'] == selected_run_id:
                     st.success("重新模擬完成！")
                     st.write("##### 重新模擬結果：")
-                    fig_verify = create_plot(frames_axis, verify_data, f"Run {selected_run_id} Verification (Re-run)")
+                    fig_verify = create_plot(v_res['frames_axis'], v_res['data'], f"Run {selected_run_id} Verification (Re-run)")
                     st.pyplot(fig_verify)
+                else:
+                    # 如果滑桿ID變了，清空舊的驗證圖
+                    st.session_state.verification_result = None
 
 if __name__ == "__main__":
     main()
-
-
